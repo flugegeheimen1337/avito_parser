@@ -323,15 +323,15 @@ class Service:
                             )
                         )
                         price_ids.append(item.avito_id)
-                recovered = watch.last_error is not None
                 watch.baseline_done = True
-                watch.last_polled_at = now
-                watch.last_success_at = now
-                watch.last_http_status = 200
-                watch.last_error = None
-                watch.consecutive_failures = 0
-                watch.paused_until = None
                 if from_live:
+                    recovered = watch.last_error is not None
+                    watch.last_polled_at = now
+                    watch.last_success_at = now
+                    watch.last_http_status = 200
+                    watch.last_error = None
+                    watch.consecutive_failures = 0
+                    watch.paused_until = None
                     jitter = random.randint(0, 5)
                     watch.next_poll_at = now + timedelta(seconds=watch.interval_seconds + jitter)
                     if recovered:

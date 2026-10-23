@@ -175,6 +175,14 @@ async def test_block_pauses_and_does_not_refetch(service: Service) -> None:
     paused = await service.get_watch_view(watch.id)
     assert paused is not None and paused.consecutive_failures == 2
 
+    snapshot = await service.poll_fixture(watch.id, "baseline")
+    assert "Первый снимок" in snapshot
+    paused = await service.get_watch_view(watch.id)
+    assert paused is not None
+    assert paused.baseline_done is True
+    assert paused.last_error
+    assert paused.paused_until == now + timedelta(seconds=120)
+
     service.settings.fetch_live = True
 
     class Boom:
