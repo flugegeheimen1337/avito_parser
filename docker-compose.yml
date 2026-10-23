@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: avito
+      POSTGRES_PASSWORD: avito
+      POSTGRES_DB: avito
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avito -d avito"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://avito:avito@db:5432/avito
+      FETCH_LIVE: "1"
+      ALLOW_FIXTURE_POLL: "0"
+      HOST: 0.0.0.0
+      PORT: "8080"
+      BOT_TOKEN: ${BOT_TOKEN:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  pgdata:
