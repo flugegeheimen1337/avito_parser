@@ -15,6 +15,7 @@ from app.decide import decide
 from app.fetch import FetchResult, backoff_seconds, classify_response, fetch_search
 from app.parser import ParsedItem, parse_price, parse_search_html
 from app.service import Service
+from app.catalog import category_search_url
 from app.urls import normalize_search_url
 from app.web import create_app
 
@@ -235,6 +236,53 @@ async def test_web_flow(service: Service) -> None:
         assert "было 45 000 ₽" in feed
         assert "iPhone 13 на запчасти" not in feed
         assert "iPhone 11, 64 ГБ" not in feed
+
+        page = await client.get("/watches/1")
+        listings = page.text.split('id="listings"', 1)[1].split('id="feed"', 1)[0]
+        assert "iPhone 14, 128 ГБ" in listings
+        assert "iPhone 13, 128 ГБ" in listings
+        assert "60 000 ₽" in listings
+
+
+def test_category_urls_cover_different_sections() -> None:
+    phones = category_search_url("moskva", "telefony", "iphone")
+    cars = category_search_url("sankt-peterburg", "avtomobili", "")
+    flats = category_search_url("kazan", "kvartiry", "студия")
+    assert "/moskva/telefony?" in phones and "q=iphone" in phones and "s=104" in phones
+    assert "/sankt-peterburg/avtomobili?" in cars and "s=104" in cars
+    assert "/kazan/kvartiry?" in flats and "%D1%81%D1%82%D1%83%D0%B4%D0%B8%D1%8F" in flats
+    with pytest.raises(ValueError):
+        category_search_url("moskva", "not-a-category")
+
+
+async def test_catalog_adds_a_category_watch(service: Service) -> None:
+    app = create_app(service, service.settings)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        catalog = await client.get("/catalog?city=kazan")
+        assert "Ноутбуки" in catalog.text
+        assert "Казань" in catalog.text
+        assert "Автомобили" in catalog.text
+
+        created = await client.post(
+            "/catalog/watch",
+            data={"city": "kazan", "category": "noutbuki", "q": "macbook"},
+            follow_redirects=True,
+        )
+        assert "Ноутбуки: macbook · Казань" in created.text
+        assert "/kazan/noutbuki?" in created.text
+        assert "s=104" in created.text
+        assert "Сохранённых объявлений пока нет" in created.text
+
+        again = await client.get("/catalog?city=kazan&q=macbook")
+        assert "Ноутбуки · смотреть" in again.text
+
+        rejected = await client.post(
+            "/catalog/watch",
+            data={"city": "kazan", "category": "not-a-category"},
+            follow_redirects=True,
+        )
+        assert "Выберите город и категорию из списка" in rejected.text
 
 
 def _item(avito_id: str, title: str, price: int, published_at: datetime) -> ParsedItem:

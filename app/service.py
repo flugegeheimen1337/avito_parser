@@ -57,6 +57,17 @@ class NoteView:
 
 
 @dataclass
+class ItemView:
+    avito_id: str
+    title: str
+    price: int | None
+    url: str
+    location: str | None
+    raw_date: str | None
+    first_seen_at: datetime
+
+
+@dataclass
 class ApplyReport:
     baseline: bool
     new_ids: list[str]
@@ -146,12 +157,44 @@ class Service:
             watches = (await session.scalars(stmt)).all()
             return [await self._view(session, watch) for watch in watches]
 
-    async def notifications(self, limit: int = 40) -> list[NoteView]:
+    async def notifications(self, limit: int = 40, watch_id: int | None = None) -> list[NoteView]:
         async with self.factory() as session:
-            rows = (
-                await session.scalars(select(Notification).order_by(Notification.id.desc()).limit(limit))
-            ).all()
+            stmt = select(Notification).order_by(Notification.id.desc()).limit(limit)
+            if watch_id is not None:
+                stmt = (
+                    select(Notification)
+                    .where(Notification.watch_id == watch_id)
+                    .order_by(Notification.id.desc())
+                    .limit(limit)
+                )
+            rows = (await session.scalars(stmt)).all()
             return [_note_view(row) for row in rows]
+
+    async def listings(self, watch_id: int, limit: int = 80) -> list[ItemView] | None:
+        async with self.factory() as session:
+            watch = await session.get(Watch, watch_id)
+            if watch is None:
+                return None
+            rows = (
+                await session.scalars(
+                    select(SeenItem)
+                    .where(SeenItem.watch_id == watch_id)
+                    .order_by(SeenItem.first_seen_at.desc(), SeenItem.id.desc())
+                    .limit(limit)
+                )
+            ).all()
+            return [
+                ItemView(
+                    avito_id=row.avito_id,
+                    title=row.title,
+                    price=row.price,
+                    url=row.url,
+                    location=row.location,
+                    raw_date=row.raw_date,
+                    first_seen_at=row.first_seen_at,
+                )
+                for row in rows
+            ]
 
     async def get_watch_view(self, watch_id: int) -> WatchView | None:
         async with self.factory() as session:
